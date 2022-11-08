@@ -1,0 +1,424 @@
+#!/bin/bash
+
+################################################################################
+## BBQ
+##
+##
+## Archive
+## checkBBQ
+## commands
+## delete
+## list
+
+## main
+## results
+## scripts
+## latest
+## next
+## previous
+## first
+
+## process
+## register
+## listRegister
+## editRegister
+
+## removeBBQ
+## run
+## search
+## searchResults
+## searchNotResults
+## snap
+## tag
+## listTags
+## lock
+## unlock
+## wheream
+##
+
+
+########################################
+## Archive
+##
+## Create an archive of one or more BBQ directories.
+## options are:
+## 	this		: Create archive of current BBQ, and copy it into the current directory and branch.
+##	results		: Create archive of current BBQ's Results, and copy it into the current directory and branch.
+##	allResults	: Create archive of results for all registered BBQs, and copy into the current directory.
+##	allRegistered	: Create and archive of all registered BBQs, and copy into the current directory.
+##
+function archive () {
+	x=$1
+	s=$PWD
+	[[ "$x" == "results" ]] && cb=1 && [[ "$(bbq checkBBQ)" == "" ]] && r="/*" && p="1" && c="$RESULTS_DIR" && o="$RESULTS" && s=$PWD && v="$PWD"
+	[[ "$x" == "allResults" ]] && r="/*" && p="1" && c="$RESULTS_DIR" && o="$RESULTS" && s=$ARCHIVE_DIR && v=$(listRegister)
+	[[ "$x" == "this" ]] && cb=1 && [[ "$(bbq checkBBQ)" == "" ]] && r="" && p="1" && c="$MAIN_DIR" && o="all" && s=$PWD && v="$PWD"
+	[[ "$x" == "allRegistered" ]] && r="" && p="1" && c="$MAIN_DIR" && o="all" && s=$ARCHIVE_DIR && v=$(listRegister)
+	if [ "$p" == "1" ]
+	then
+		for u in $v
+		do
+			[[ ! -d $u ]] && $CMD_OUT "*** ERROR: Directory not found: $u" && continue
+			cd $u;
+			lock $MY_LOCK 
+			q=$(list | grep '\*' | awk '{print $2}')
+			DEBUG $(load $c); y="$( pwd )"; cd ..; z=$($CMD_OUT $y | sed 's/.*\///g')
+			w="$PWD/$z.$o.$(whoami).$($CMD_DATE).gz"
+			DEBUG $(tar -czf $w $z$r 2>$DEV_NULL); cd $y; DEBUG $(load $MAIN_DIR); mv $w $s; DEBUG $(load $q);
+			unlock
+		done
+		cd $s
+	else
+		[[ cb -eq 1 ]] && checkBBQ
+	fi
+	[[ $p -ne 1 ]] && $CMD_OUT "*** ERROR: Must specify: this, results, allResults, allRegistered"
+}
+
+
+################################################################################
+## checkBBQ
+##
+## See if the current directory is at the BBQ. If it is not, then exit the script.
+## If there is a lock file, then indicate that the BBQ is private, unless the
+## lock file was created by this instance of the script.
+##
+function checkBBQ () { 
+	[[ ! -d "$BBQ_DIR" ]] && $CMD_OUT "*** ERROR: This directory is not at the bbq.\n" && exit
+	[[ $(ls $PWD/$BBQ_DIR/$LOCK_FILE* 2>$DEV_NULL) ]] && [[ ! -f $PWD/$BBQ_DIR/$LOCK_FILE$MY_LOCK ]] && $CMD_OUT "*** ERROR: This BBQ is private!" && exit
+} 
+
+
+
+################################################################################
+## commands
+## 
+## Get the list of command that have been used with the run command.
+## 
+function commands () { 
+	x="$(git grep "Command:" $(git rev-list --all) | grep "$OUT_FILE:" | sed 's/.*://g' )"
+	$CMD_OUT "$x" | sort -u
+}
+
+
+
+################################################################################
+## delete
+##
+## Delete the specific branch from the BBQ. The active branch cannot be 
+## deleted, nor can the main, __scripts, or __results branches.
+##
+function delete () {
+	checkBBQ; lock $MY_LOCK
+	x=$1
+	[[ "$x" == "" ]] && $CMD_OUT "*** ERROR: Name required" && exit
+	[[ "$x" == "$MAIN_DIR" ]] || [ "$x" == "$SCRIPTS_DIR" ] || [ "$x" == "$RESULTS_DIR" ] && $CMD_OUT "*** ERROR : Cannot delete code branches." && exit
+	y=$(list | grep $x)
+	[[ "$y" == "" ]] && $CMD_OUT "*** ERROR: Branch does not exist: $x" && exit
+	[[ "$y" != "${y/\*/}" ]] && $CMD_OUT "*** ERROR: Cannot delete current branch." && exit
+	git branch $x -D
+	unlock
+}
+
+
+
+function list () { checkBBQ; git branch --list; }
+################################################################################
+## load 
+##
+## Load the specified BBQ branch/
+function load () {
+	checkBBQ
+	snap
+	x=$1
+	y=0
+	[[ "$x" == ""         ]] && $CMD_OUT "*** ERROR: Name required." && exit;
+	[[ "$x" == "$SCRIPTS" ]] && y=1 && $CMD_OUT "Loading: Scripts" && DEBUG $(git checkout $SCRIPTS_DIR 2>$DEV_NULL)
+	[[ "$x" == "$RESULTS" ]] && y=1 && $CMD_OUT "Loading: Results" && DEBUG $(git checkout $RESULTS_DIR 2>$DEV_NULL)
+	[[ "$y" == "0"        ]] && $CMD_OUT "Loading: ${x/ /}" && DEBUG $(git checkout $x 2>$DEV_NULL);
+}
+
+
+
+################################################################################
+## main / results / scripts / latest / next / previous / first
+##
+## Shortcut functions for loading branches.
+##
+## main		: Load the main branch
+## scripts	: Load the __scripts branch
+## results	: Load the __results branch
+## latest	: Load the most recently created run branch
+## next		: Load the next branch on the branch list
+## previous	: Load the previous branch on the branch list
+## first	: Load the first branch on the branch list
+##
+function main    () { load $MAIN_DIR;    }
+function scripts () { load $SCRIPTS; }
+function results () { load $RESULTS; }
+function latest  () { 
+	checkBBQ
+	a=$(git branch --list | grep -B 1 $RESULTS_DIR | grep -v "  __" | grep -v \* | head -n 1)
+	[[ "$a" != "" ]] && load $a 2>$DEV_NULL
+}
+function next    () { 
+	checkBBQ
+	a=$(git branch --list | grep -v "  __" | grep -A 1 \* | grep -v \* | tail -n 1)
+	[[ "$a" != "" ]] && [[ "$a" != "$MAIN_DIR" ]] && load $a 2>$DEV_NULL
+}
+function previous () { 
+	checkBBQ
+	a=$(git branch --list | grep -v "  __" | grep -B 1 \* | grep -v \* | head -n 1)
+	[[ "$a" != "" ]] && load $a 2>$DEV_NULL
+}
+function first    () { 
+	checkBBQ
+	a=$(git branch --list | grep -v "  __" | head -n 1)
+	[[ "$a" != "" ]] && [[ "$a" != "$MAIN_DIR" ]] && load $a 2>$DEV_NULL
+}
+
+
+
+################################################################################
+## process
+##
+function process () {
+	lock $MY_LOCK
+	checkBBQ
+	b=$(list | grep '\*' | awk '{print $2}')
+	a=$TEMP_DIR/$($CMD_OUT "$TEMP_DIR/$($CMD_OUT $(mktemp))" | awk 'BEGIN {FS="/"} {print $NF}')
+	mkdir -p $a/$OUT_DIR
+	snap
+	load $SCRIPTS
+	cp * $a
+	z="$(list | sed 's/\*//g')"
+	for w in $z
+	do
+		[[ "$w" == "$SCRIPTS_DIR" ]] || [ "$w" == "$RESULTS_DIR" ] || [ "$w" == "$MAIN_DIR" ] || [ "$w" == "$OUT_DIR" ] && continue
+	load $w
+	v=$a/*
+		for t in $v
+		do
+			u="${t##*/}"
+		        if [ ! "$u" == "" ] && [ "${u/__/}" == "$u" ]  && [ ! -d "$t" ]
+		        then
+				s=$a/$OUT_DIR/${u}.$(whoami).${w}
+				bash $t > $s;
+		        fi
+		done
+	done
+	load $RESULTS; rm -rf *
+	touch $RESULTS_DIR
+	w=$(ls $a/$OUT_DIR/* 2>$DEV_NULL)
+	[[ "$w" != "" ]] && cp $a/$OUT_DIR/* .
+	rm -rf $a
+	snap
+	[[ ! "$b" == "" ]] && load $b
+	unlock
+}
+
+
+
+################################################################################
+## register / listRegister / editRegister
+## 
+## Write the full path of the current directory to the centralized BBQ registry.
+## The registry is used for keeping track of all of the BBQs for the current user,
+## so that the archive functions can collect results/BBQs.
+function register () { 
+	
+	# Take a snapshot, to ensure that the current directory is a BBQ.
+	DEBUG $(snap)
+ 	x="$(pwd)"
+	touch $REGISTER_FILENAME
+	[[ "$(grep $x $REGISTER_FILENAME)" == "" ]] && $CMD_OUT "$x" >> $REGISTER_FILENAME
+}
+function listRegister () { touch $REGISTER_FILENAME;     cat $REGISTER_FILENAME; }
+function editRegister () { touch $REGISTER_FILENAME; [[ "$EDITOR" == "" ]] && EDITOR=vi; $EDITOR $REGISTER_FILENAME; }
+
+
+
+################################################################################
+## removeBBQ
+##
+## Remove the BBQ directories from this directory.
+##
+function removeBBQ () { checkBBQ; $CMD_OUT "*** Removing BBQ from $PWD"; $CMD_OUT ""; rm -rf $BBQ_DIR; }
+
+
+
+################################################################################
+## run
+##
+## Cook at the current BBQ using the supplied command line.
+## The command will likely need to be escaped in order to run properly.
+##
+function run () {
+	lock $MY_LOCK
+	b=$(list | grep '\*' | awk '{print $2}')
+	snap
+	tag  $($CMD_DATE | sed 's/ /_/g;s/:/-/g')__$(bbq whereami)
+#	git switch -C $($CMD_DATE | sed 's/ /_/g;s/:/-/g')
+	$CMD_OUT "Command: $@" > $OUT_FILE
+	x=$@
+	script -a $OUT_FILE --command "$x"
+	snap
+	[[ ! "$b" == "" ]] && load $b
+	unlock
+}
+
+
+
+################################################################################
+## search / searchResults / searchNotResults
+##
+## Perform searches on the BBQ, optionally search only results, or everything 
+## except results.
+##
+function search () {
+	checkBBQ
+	x="$(git grep -I $1 $(git rev-list --all | sed '/~/d' ) -- $2  | sed '/\.bbq/d')"
+	y="$(git name-rev $(git rev-list --all) | sed 's/ /--/g')"
+	for z in $y
+	do
+	        w=${z%%__*}
+		w=${w/--*/}
+		v=${z##*--}
+		v=${v%%~*}
+		x="$($CMD_OUT "$x" | sed "s/$w:/$v:/")"
+	done
+	x="$($CMD_OUT "$x" | sed "s/^\([^:]*:[^:]*\):/[\1]: /" | sort -u)"
+	$CMD_OUT "$x" | grep -v "^Binary file.*matches"
+}
+function searchResults    () { search $@  | grep    "$RESULTS_DIR"; }
+function searchNotResults () { search $@  | grep -v "$RESULTS_DIR"; }
+
+
+
+################################################################################
+## snap
+##
+## Take a snapshot of the current directory.
+##
+function snap () {
+
+	# If the directory is not a BBQ, then initialize BBQ.	
+	if [ ! -d "$BBQ_DIR" ]
+	then
+	        DEBUG "$(git init .)"
+		DEBUG "$(git config --unset core.bare)"
+		DEBUG "$(git add *)"
+		DEBUG "$(git commit -m norm -a)"
+	        DEBUG "$(git checkout --orphan $RESULTS_DIR)"
+		DEBUG "$(rm -rf *
+		touch $RESULTS_DIR)"
+	        DEBUG "$(git add *)"
+		DEBUG "$(git commit -m norm -a)"
+		DEBUG "$(git checkout --orphan $SCRIPTS_DIR)"
+	        DEBUG "$(rm -rf *
+		touch $SCRIPTS_DIR)"
+		x="$(cd -P "$( dirname $0)" && pwd )"
+	        [[ -d "$x/$SCRIPTS_DIR" ]] && cp $x/$SCRIPTS_DIR/* .
+		DEBUG "$(git add *)"
+		DEBUG "$(git commit -m norm -a)"
+	        DEBUG "$(load $MAIN_DIR)"
+		exit
+	else
+
+		# Create the snapshot
+		lock $MY_LOCK
+		x=$(ls)
+		[[ "$x" != "" ]] && DEBUG "$(git add $x)"
+		DEBUG "$(git commit -m norm -a)"
+		unlock
+	fi
+}
+
+
+
+################################################################################
+## tag / listTags
+##
+## Make of copy of the current branch, and name it to the value of $1.
+## The new branch becomes active. The command listTags lists all of the
+## tags that have been created.
+##
+function tag () {
+	checkBBQ
+	lock $MY_LOCK
+	[[ "$1" == ""      ]] && $CMD_OUT "*** ERROR: Tag name required" && exit
+	DEBUG $(git branch $1)
+	DEBUG $(load $1)
+	snap
+	unlock
+}
+function listTags () { 
+	checkBBQ 
+	git branch --list | sed "/^  [0-9][0-9][0-9][0-9]-[^a-zA-Z]*$/d;/^  __.*$/d;/. $MAIN_DIR/d;/.*_.*/d;s/[ \*] //g"
+}
+
+
+
+################################################################################
+## lock/unlock
+##
+## Remove the lock file from the .bbq directory.
+## Lock files are created either as generic files (lock), or with the contents
+## of $1 at the end. Functions in this script use a random value when calling
+## the lock function. The value is different each time this script is run. 
+## The checkBBQ command prevents functions from running if the lock file
+## is present. It ignores the lock file if the file contains the random
+## string from the same script instance. This prevents multiple versions of 
+## the script from interfering with each other.
+##
+function lock   () { checkBBQ; touch ./$BBQ_DIR/$LOCK_FILE$1;};
+function unlock () { [[ $PWD/$BBQ_DIR ]] && rm -rf ./$BBQ_DIR/$LOCK_FILE*; }
+
+
+
+########################################
+## whereami
+##
+## Determine the branch that is active.
+##
+function whereami () { 
+	checkBBQ
+	echo $(bbq list | grep \* | sed 's/\* //g')
+}
+
+
+
+################################################################################
+## Utility vars and functions
+readonly DEBUG="no"
+function DEBUG () { [[ "$DEBUG" == "yes" ]] && $CMD_OUT "$1"; }
+readonly CMD_OUT="echo -e"
+readonly CMD_DATE="date +%Y-%m-%d_%H-%M-%S"
+
+
+
+################################################################################
+## Directory and file names and locations
+readonly ARCHIVE_DIR="$(mkdir ~/bbqArchive -p; cd ~/bbqArchive && pwd)"
+readonly TEMP_DIR="$(mkdir ~/.bbqTemp -p; cd ~/.bbqTemp && pwd)"
+readonly LOCK_FILE="lock"
+readonly MY_LOCK="$(mktemp | sed 's/.*\.//g')"
+readonly REGISTER_FILENAME=$(cd ~ && pwd)/.bbqRegister
+readonly MAIN_DIR="master"
+readonly DEV_NULL="/dev/null"
+readonly OUT_DIR="ASDFASDFASDFASDFoutputoutput"
+readonly OUT_FILE="output.txt"
+readonly RESULTS="results"
+readonly RESULTS_DIR="__results"
+readonly SCRIPTS="scripts"
+readonly SCRIPTS_DIR="__scripts"
+export GIT_DIR=".bbq"
+readonly BBQ_DIR=$GIT_DIR
+
+# Test whether git has been configured properly for this system. If  the user and email settings are not set, then git will not function.
+readonly GIT_CONFIG=$(git config -l)
+[[ "$( echo "$GIT_CONFIG" | grep user\.email)" == "" ]] && echo -e "\nERROR:  git not configured. Must set user.email and user.name to continue.\n(git config --global <setting> <value>." && exit
+
+# Get and run the command from the command line.
+COMMAND="$(echo "$1 $2 $3 $4" | sed ':a;s/ $//g;ta')"
+[[ "$(grep "function ${COMMAND%% *}" $0)" == "" ]] && $CMD_OUT "*** ERROR: Command not found: $COMMAND" && exit
+$COMMAND
