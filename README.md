@@ -22,4 +22,32 @@ By default, BBQ creates and uses the ~/bbqArchive directory to store BBQ archive
 
 ## Commands
 
+### Basic
+CheckBBQ
+snap
+init
+archive
 
+### Movement
+delete
+list
+load <dir>
+main
+results
+scripts
+whereami
+tag <name>
+listTags
+  
+### Processing
+commands
+run
+process
+first
+next
+previous
+latest
+  
+### Register
+editRegister
+listRegister
