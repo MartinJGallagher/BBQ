@@ -20,15 +20,57 @@ where bbq has been initialized, and is used during the result collection and arc
 
 By default, BBQ creates and uses the ~/bbqArchive directory to store BBQ archives. This can be changed in the script.
 
+## Sample Session
+
+Create a directory that you will use for this tutorial. It doesn't matter where the directory is. We will call this the BBQTest directory.
+  
+Create the following script in the BBQTest directory, and name it "testing"
+
+> #!/bin/bash\
+> date
+
+type:
+> $ bbq init
+  
+This creates the .bbq directory in the BBQTest directory, and registers the directory in the ~/.bbqRegistry file.
+
+type:
+> $ bbq scripts
+  
+Create the following script, and name it "processingScript"
+  
+> #!/bin/bash
+> cat *
+  
+type:
+>$ bbq main
+ 
+Now, run the testing script:
+  
+>$ bbq run ./testing
+  
+When the script has run, type:
+  
+>$ bbq process
+
+This causes scripts to be run for all of the bbq runs that have been completed, and copies the results into the bbq results. To view the results:
+  
+>$ bbq results\
+>$ ls -l
+
+There wi..
+
 ## Commands
 
 ### Basic
+
 CheckBBQ
 snap
 init
 archive
 
 ### Movement
+
 delete
 list
 load <dir>
@@ -40,6 +82,7 @@ tag <name>
 listTags
   
 ### Processing
+
 commands
 run
 process
